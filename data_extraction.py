@@ -140,3 +140,41 @@ wr_df = wr_df[(wr_df["Receiving Yards"] > 3250) & (wr_df["Receiving TDs"] > 20)]
 
 te_df = df[df["Position"] == 'TE']
 te_df = te_df[(te_df["Receiving Yards"] > 1000) & (te_df["Receiving TDs"] > 5)]
+
+df = pd.read_csv("data/Career_Stats_Rushing.csv")
+
+# Replace '--' with NaN
+df.replace('--', pd.NA, inplace=True)
+
+# Define numeric columns to convert
+numeric_cols = [
+    'Games Played', 'Rushing Attempts', 'Rushing Attempts Per Game',
+    'Rushing Yards', 'Yards Per Carry', 'Rushing Yards Per Game',
+    'Rushing TDs', 'Rushing First Downs', 'Percentage of Rushing First Downs',
+    'Rushing More Than 20 Yards', 'Rushing More Than 40 Yards', 'Fumbles'
+]
+df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors='coerce')
+
+# Filter for running back-related positions
+rb_positions = ['RB', 'FB', 'HB', 'TB']
+df = df[df['Position'].isna() | df['Position'].isin(rb_positions)]
+
+# Normalize position to just 'RB'
+df['Position'] = 'RB'
+
+# Group by player for career totals
+df = df.groupby(['Player Id', 'Name', 'Position'], dropna=False)[numeric_cols].sum().reset_index()
+
+# Filter out HOF players
+hof_df = pd.read_csv("data/HOF.csv")
+hof_df["Formatted Name"] = hof_df["player"].apply(
+    lambda x: f"{x.split()[1]}, {x.split()[0]}" if len(x.split()) >= 2 else x
+)
+hof_names = set(hof_df["Formatted Name"])
+df = df[~df["Name"].isin(hof_names)]
+
+# Optional: filter only productive backs
+rb_df = df[(df["Rushing Yards"] > 3500) | (df["Rushing TDs"] > 25)]
+
+nonHOF_df = pd.concat([db_df, wr_df, rb_df, lb_df, de_df, qb_df, dt_df, te_df], ignore_index=True)
+nonHOF_df.to_csv("data/nonHOF.csv", index=False)
