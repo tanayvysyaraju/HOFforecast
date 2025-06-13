@@ -13,7 +13,8 @@ def filterHOF():
   df = df[df["to"] >= 1985]
 
   #saving to a csv file
-  df.to_csv("HOF.csv", index=False)
+  #df.to_csv("ML_HOF.csv", index=False)
+  return df
 
 def filterNonHOF():
   #FILTERING DEFENSIVE DATA SET
@@ -44,7 +45,7 @@ def filterNonHOF():
   })
 
   # Load HOF data and normalize name format
-  hof_df = pd.read_csv("data/HOF.csv")
+  hof_df = pd.read_csv("data/ML_HOF.csv")
   hof_df["Formatted Name"] = hof_df["player"].apply(
     lambda x: f"{x.split()[1]}, {x.split()[0]}" if len(x.split()) >= 2 else x
   )
@@ -167,7 +168,7 @@ def filterNonHOF():
   df = df.groupby(['Player Id', 'Name', 'Position'], dropna=False)[numeric_cols].sum().reset_index()
 
   # Filter out HOF players
-  hof_df = pd.read_csv("data/HOF.csv")
+  hof_df = pd.read_csv("data/ML_HOF.csv")
   hof_df["Formatted Name"] = hof_df["player"].apply(
     lambda x: f"{x.split()[1]}, {x.split()[0]}" if len(x.split()) >= 2 else x
   )
@@ -178,5 +179,5 @@ def filterNonHOF():
   rb_df = df[(df["Rushing Yards"] > 3500) | (df["Rushing TDs"] > 25)]
 
   nonHOF_df = pd.concat([db_df, wr_df, rb_df, lb_df, de_df, qb_df, dt_df, te_df], ignore_index=True)
-  nonHOF_df.to_csv("data/nonHOF.csv", index=False)
-  print(nonHOF_df)
+  #nonHOF_df.to_csv("data/ML_nonHOF.csv", index=False)
+  return nonHOF_df
