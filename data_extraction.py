@@ -178,3 +178,4 @@ rb_df = df[(df["Rushing Yards"] > 3500) | (df["Rushing TDs"] > 25)]
 
 nonHOF_df = pd.concat([db_df, wr_df, rb_df, lb_df, de_df, qb_df, dt_df, te_df], ignore_index=True)
 nonHOF_df.to_csv("data/nonHOF.csv", index=False)
+print(nonHOF_df)
