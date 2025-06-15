@@ -1,8 +1,7 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, roc_auc_score
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from sklearn.feature_selection import SelectKBest, f_classif
 from imblearn.over_sampling import SMOTE
 
@@ -19,10 +18,10 @@ rename_map = {
     "pass_attempts": "Passes Attempted", "completions": "Passes Completed"
 }
 hof_df.rename(columns=rename_map, inplace=True)
+
 hof_df["HOF"] = 1
 non_hof_df["HOF"] = 0
 
-# Align both datasets
 all_columns = set(hof_df.columns).union(set(non_hof_df.columns))
 for col in all_columns:
     if col not in hof_df:
@@ -44,7 +43,7 @@ hof_aligned = hof_df.reindex(columns=unique_columns)
 non_hof_aligned = non_hof_df.reindex(columns=unique_columns)
 combined_df = pd.concat([hof_aligned, non_hof_aligned], ignore_index=True)
 
-# --- STEP 2: Define features per position ---
+# --- STEP 2: Define position-specific relevant features ---
 position_feature_map = {
     "QB": ["Passes Attempted", "Passes Completed", "Passing Yards", "TD Passes", "Ints"],
     "WR": ["Receptions", "Receiving Yards", "Receiving TDs"],
@@ -58,7 +57,7 @@ position_feature_map = {
     "FS": ["Ints", "Total Tackles", "Passes Defended"],
 }
 
-# --- STEP 3: Train and evaluate per position ---
+# --- STEP 3: Train and evaluate models by position ---
 positions = combined_df['Position'].dropna().unique()
 all_y_true = []
 all_y_pred = []
@@ -77,11 +76,8 @@ for position in positions:
 
     X = pos_df[features].fillna(0)
     y = pos_df["HOF"]
+
     hof_count = sum(y == 1)
-
-    use_logistic = False
-
-    # Feature reduction for small HOF class
     if hof_count <= 5:
         print(f"Reducing features and applying SMOTE for {position} (only {hof_count} HOF samples)...")
         k = min(2, X.shape[1])
@@ -90,16 +86,16 @@ for position in positions:
         selected = [features[i] for i in selector.get_support(indices=True)]
         print(f"Selected Features: {selected}")
         X = X[selected]
-        use_logistic = True  # Use simpler model for small samples
     else:
         selected = X.columns
 
-    # Train/test split
+    # Train-test split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.25, stratify=y, random_state=42
     )
 
-    # Apply SMOTE if possible
+    # Apply SMOTE only if needed
+    # Apply SMOTE only if needed
     if hof_count <= 5:
         minority_class_count = y_train.value_counts().get(1, 0)
         if minority_class_count > 1:
@@ -110,22 +106,15 @@ for position in positions:
         else:
             print("Skipping SMOTE — not enough HOF samples to resample.")
 
-    # Choose model
-    if use_logistic:
-        model = LogisticRegression(random_state=42, class_weight='balanced', max_iter=1000)
-    else:
-        model = RandomForestClassifier(random_state=42, class_weight='balanced')
 
-    # Cross-validation
-    cv_folds = min(5, sum(y == 1), sum(y == 0))  # ensure class support
-    if cv_folds >= 2:
-        cv_scores = cross_val_score(model, X, y, cv=cv_folds, scoring='f1')
-        print(f"F1 Cross-Validation Scores: {cv_scores}")
-        print(f"Average F1 Score: {cv_scores.mean():.4f}")
-    else:
-        print("Skipping cross-validation — not enough data.")
+    model = RandomForestClassifier(random_state=42, class_weight='balanced')
 
-    # Train and predict
+    # Cross-validation (on original un-split data)
+    print("Performing 5-fold cross-validation...")
+    cv_scores = cross_val_score(model, X, y, cv=5, scoring='f1')
+    print(f"F1 Cross-Validation Scores: {cv_scores}")
+    print(f"Average F1 Score: {cv_scores.mean():.4f}")
+
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
@@ -137,16 +126,6 @@ for position in positions:
 
     print("Confusion Matrix:")
     print(confusion_matrix(y_test, y_pred))
-
-    if hasattr(model, 'predict_proba'):
-        y_proba = model.predict_proba(X_test)[:, 1]
-        try:
-            auc = roc_auc_score(y_test, y_proba)
-            print(f"AUC Score: {auc:.4f}")
-        except:
-            print("AUC could not be calculated — not enough positive/negative samples.")
-    else:
-        print("Model does not support probability prediction for AUC.")
 
     if hasattr(model, 'feature_importances_') and len(selected) == len(model.feature_importances_):
         print("Feature Importances:")
