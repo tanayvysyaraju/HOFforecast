@@ -1,13 +1,15 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, roc_auc_score
+from sklearn.feature_selection import SelectKBest, f_classif
+from imblearn.over_sampling import SMOTE
 
 # --- STEP 1: Load and clean HOF + non-HOF datasets ---
 non_hof_df = pd.read_csv("data/ML_nonHOF.csv")
 hof_df = pd.read_csv("data/ML_HOF.csv")
 
-# Rename columns in HOF to match non-HOF
 rename_map = {
     "player": "Name", "position": "Position",
     "tackles": "Total Tackles", "sacks": "Sacks", "interception": "Ints",
@@ -17,12 +19,10 @@ rename_map = {
     "pass_attempts": "Passes Attempted", "completions": "Passes Completed"
 }
 hof_df.rename(columns=rename_map, inplace=True)
-
-# Add HOF labels
 hof_df["HOF"] = 1
 non_hof_df["HOF"] = 0
 
-# Ensure consistent columns across both
+# Align both datasets
 all_columns = set(hof_df.columns).union(set(non_hof_df.columns))
 for col in all_columns:
     if col not in hof_df:
@@ -30,11 +30,9 @@ for col in all_columns:
     if col not in non_hof_df:
         non_hof_df[col] = pd.NA
 
-# Drop duplicate columns if any
 hof_df = hof_df.loc[:, ~hof_df.columns.duplicated()]
 non_hof_df = non_hof_df.loc[:, ~non_hof_df.columns.duplicated()]
 
-# Sort and remove duplicates while preserving order
 unique_columns = []
 seen = set()
 for col in list(hof_df.columns) + list(non_hof_df.columns):
@@ -42,12 +40,11 @@ for col in list(hof_df.columns) + list(non_hof_df.columns):
         unique_columns.append(col)
         seen.add(col)
 
-# Align DataFrames and concatenate
 hof_aligned = hof_df.reindex(columns=unique_columns)
 non_hof_aligned = non_hof_df.reindex(columns=unique_columns)
 combined_df = pd.concat([hof_aligned, non_hof_aligned], ignore_index=True)
 
-# --- STEP 2: Define position-specific relevant features ---
+# --- STEP 2: Define features per position ---
 position_feature_map = {
     "QB": ["Passes Attempted", "Passes Completed", "Passing Yards", "TD Passes", "Ints"],
     "WR": ["Receptions", "Receiving Yards", "Receiving TDs"],
@@ -61,8 +58,11 @@ position_feature_map = {
     "FS": ["Ints", "Total Tackles", "Passes Defended"],
 }
 
-# --- STEP 3: Train and evaluate models by position ---
+# --- STEP 3: Train and evaluate per position ---
 positions = combined_df['Position'].dropna().unique()
+all_y_true = []
+all_y_pred = []
+
 for position in positions:
     print(f"\n=== Training for Position: {position} ===")
     features = position_feature_map.get(position)
@@ -75,30 +75,85 @@ for position in positions:
         print(f"Skipping {position} — insufficient class diversity or samples.")
         continue
 
-    # Prepare data
     X = pos_df[features].fillna(0)
     y = pos_df["HOF"]
+    hof_count = sum(y == 1)
 
-    # Split and train
+    use_logistic = False
+
+    # Feature reduction for small HOF class
+    if hof_count <= 5:
+        print(f"Reducing features and applying SMOTE for {position} (only {hof_count} HOF samples)...")
+        k = min(2, X.shape[1])
+        selector = SelectKBest(score_func=f_classif, k=k)
+        X_selected = selector.fit_transform(X, y)
+        selected = [features[i] for i in selector.get_support(indices=True)]
+        print(f"Selected Features: {selected}")
+        X = X[selected]
+        use_logistic = True  # Use simpler model for small samples
+    else:
+        selected = X.columns
+
+    # Train/test split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.25, stratify=y, random_state=42
     )
 
-    model = RandomForestClassifier(random_state=42, class_weight='balanced')
+    # Apply SMOTE if possible
+    if hof_count <= 5:
+        minority_class_count = y_train.value_counts().get(1, 0)
+        if minority_class_count > 1:
+            k_neighbors = min(5, minority_class_count - 1)
+            sm = SMOTE(random_state=42, k_neighbors=k_neighbors)
+            X_train, y_train = sm.fit_resample(X_train, y_train)
+            print(f"Applied SMOTE with k_neighbors={k_neighbors}")
+        else:
+            print("Skipping SMOTE — not enough HOF samples to resample.")
+
+    # Choose model
+    if use_logistic:
+        model = LogisticRegression(random_state=42, class_weight='balanced', max_iter=1000)
+    else:
+        model = RandomForestClassifier(random_state=42, class_weight='balanced')
+
+    # Cross-validation
+    cv_folds = min(5, sum(y == 1), sum(y == 0))  # ensure class support
+    if cv_folds >= 2:
+        cv_scores = cross_val_score(model, X, y, cv=cv_folds, scoring='f1')
+        print(f"F1 Cross-Validation Scores: {cv_scores}")
+        print(f"Average F1 Score: {cv_scores.mean():.4f}")
+    else:
+        print("Skipping cross-validation — not enough data.")
+
+    # Train and predict
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
 
-    # Evaluate
+    all_y_true.extend(y_test.tolist())
+    all_y_pred.extend(y_pred.tolist())
+
     print("\nClassification Report:")
     print(classification_report(y_test, y_pred, zero_division=0))
 
     print("Confusion Matrix:")
     print(confusion_matrix(y_test, y_pred))
 
-    print("Feature Importances:")
-    for feat, importance in zip(X.columns, model.feature_importances_):
-        print(f"  {feat}: {importance:.4f}")
+    if hasattr(model, 'predict_proba'):
+        y_proba = model.predict_proba(X_test)[:, 1]
+        try:
+            auc = roc_auc_score(y_test, y_proba)
+            print(f"AUC Score: {auc:.4f}")
+        except:
+            print("AUC could not be calculated — not enough positive/negative samples.")
+    else:
+        print("Model does not support probability prediction for AUC.")
 
-    # Optional: Save model or output predictions
-    # import joblib
-    # joblib.dump(model, f"models/{position}_rf_model.pkl")
+    if hasattr(model, 'feature_importances_') and len(selected) == len(model.feature_importances_):
+        print("Feature Importances:")
+        for feat, importance in zip(selected, model.feature_importances_):
+            print(f"  {feat}: {importance:.4f}")
+
+# --- Final Overall Accuracy ---
+print("\n=== OVERALL MODEL ACCURACY ACROSS ALL POSITIONS ===")
+overall_accuracy = accuracy_score(all_y_true, all_y_pred)
+print(f"Overall Accuracy: {overall_accuracy:.4f}")
