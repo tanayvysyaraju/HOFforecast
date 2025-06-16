@@ -1,160 +1,104 @@
-Here's the updated `README.md` with all emojis removed and a sample CLI interaction using your provided QB stats:
+# HOFforecast
+
+**HOFforecast** is a machine learning-driven system for predicting whether an NFL player has a strong likelihood of being inducted into the Hall of Fame. It leverages historical data, position-specific metrics, feature engineering, and real-time interactive prediction to enable analysts and fans to evaluate career excellence.
+
+## Overview
+
+This project was developed to:
+- Extract and clean raw NFL career statistics from multiple CSV sources
+- Normalize, combine, and classify players as HOF or non-HOF
+- Train position-specific ML models to maximize predictive accuracy
+- Allow interactive user evaluation of player profiles via command-line
+- Integrate PostgreSQL for scalable data handling
+
+**Final model accuracy on unseen player samples: 93.00%**
 
 ---
 
-```markdown
-# HOFforecast: Predicting NFL Hall of Fame Induction
+## Features
 
-**HOFforecast** is a machine learning-powered analytics platform designed to forecast the likelihood of NFL players being inducted into the Pro Football Hall of Fame. By leveraging historical performance metrics, position-specific modeling, SMOTE oversampling, and user-interactive prediction inputs, HOFforecast aims to provide insightful, data-driven predictions for players across all major positions.
+- Feature selection using `SelectKBest` for low-sample positions
+- Class balancing using `SMOTE` for undersampled Hall of Famers
+- Per-position model training (e.g., QB, WR, LB, DB, TE, etc.)
+- PostgreSQL integration for scalable data persistence
+- Cross-validation + fresh accuracy testing
+- Interactive mode for user-input predictions
 
-## Project Highlights
-
-- Position-specific model training using Random Forests
-- SMOTE (Synthetic Minority Over-sampling Technique) to handle class imbalance for rare Hall of Fame classes
-- Dynamic feature selection based on player's position
-- Interactive CLI for user-submitted player predictions
-- PostgreSQL integration for full data persistence and reproducibility
-- Cross-validation and test set evaluation for model robustness
-
-## Project Structure
-
-```
-
-HOFforecast/
-│
-├── data/                       # Raw CSV data files
-│   ├── Career\_Stats\_Defensive.csv
-│   ├── Career\_Stats\_Passing.csv
-│   ├── Career\_Stats\_Receiving.csv
-│   ├── Career\_Stats\_Rushing.csv
-│   ├── nflhofplayers.csv
-│   ├── ML\_HOF.csv              # Generated HOF player data
-│   └── ML\_nonHOF.csv           # Generated non-HOF player data
-│
-├── main.py                     # Full ML pipeline with model training, evaluation, and user input
-├── filter\_data.py              # Cleans, aggregates, and saves filtered HOF and non-HOF data to PostgreSQL
-├── README.md                   # Project overview and documentation
-├── requirements.txt            # Dependencies
-└── ...
-
-```
-
-## Features & ML Design
-
-### Feature Engineering
-
-- Features are carefully selected per position using a domain-specific `position_feature_map`.
-- Derived stats like Yards per Game, TDs per Attempt, and Int Rate enrich quarterback and receiver metrics.
-
-### Modeling Per Position
-
-Each position (e.g., QB, RB, WR, LB, DE, DB, etc.) is modeled separately:
-- Uses `RandomForestClassifier` for robustness and feature importance extraction
-- Automatically reduces features for underrepresented HOF positions (≤ 5 HOF samples)
-- Applies SMOTE when minority HOF samples are insufficient for reliable prediction
-
-### Evaluation
-
-- Cross-validation with F1 score for class balance sensitivity
-- Confusion matrix and classification report per position
-- Accuracy is evaluated using:
-  - Internal test split
-  - Randomly selected "unseen" test rows
-  - Optional live user input
-
-## User Prediction CLI
-
-After training, users are prompted to input custom players for prediction:
-
-```
-
-
-
-````
-
-
-## Setup & Usage
-
-### Prerequisites
-
-- Python 3.8+
-- PostgreSQL (local or remote)
-- `virtualenv` recommended
-
-### Installation
-
-```bash
-git clone https://github.com/yourusername/HOFforecast.git
-cd HOFforecast
-pip install -r requirements.txt
-````
-
-### PostgreSQL Setup
-
-Ensure PostgreSQL is running locally:
-
-```bash
-# Create DB (if not already)
-createdb full_db
-```
-
-Update credentials in `main.py` and `filter_data.py`:
-
-```python
-db_user = "your_postgres_user"
-db_host = "localhost"
-db_port = "5432"
-db_name = "full_db"
-```
-
-### Run the Data Pipeline
-
-```bash
-python filter_data.py
-```
-
-This loads and filters the raw CSV data, then saves HOF and non-HOF players to PostgreSQL.
-
-### Train & Predict
-
-```bash
-python main.py
-```
-
-This performs:
-
-* Model training for all positions
-* Cross-validation and feature importance output
-* Interactive prediction mode
-
-## Example Use Case
-
-* Predict if a quarterback with 10,000 pass attempts, 150,000 yards, and 500 touchdowns has a Hall of Fame probability over 85%
-* Analyze what features (e.g., interceptions, TD rate, sacks) matter most by position
-* Use it to benchmark active NFL players for HOF trajectory
+---
 
 ## Technologies Used
 
-* Python 3.11
-* pandas / numpy – Data processing
-* scikit-learn – ML modeling
-* imblearn – SMOTE oversampling
-* SQLAlchemy – PostgreSQL ORM
-* psycopg2 – PostgreSQL driver
+- **Python 3.11**
+- **Pandas & NumPy** – Data loading, aggregation, feature engineering
+- **scikit-learn** – Model training (`RandomForestClassifier`), evaluation, cross-validation, feature selection
+- **imbalanced-learn (SMOTE)** – Oversampling rare HOF samples
+- **SQLAlchemy** – PostgreSQL ORM integration
+- **PostgreSQL** – Relational storage for normalized career data
+- **Custom CSV preprocessing** – From public NFL stat datasets
 
-## Sample Output
+---
 
-```
-=== Training for Position: WR ===
-Applied SMOTE with k_neighbors=4
-Performing 5-fold cross-validation...
-F1 Cross-Validation Scores: [0.78 0.80 0.76 0.79 0.82]
-Average F1 Score: 0.7900
+## Project Structure
 
-Feature Importances:
-  Receptions: 0.42
-  Receiving Yards: 0.38
-  Receiving TDs: 0.20
+```bash
+HOFforecast/
+├── data/                       # Raw career stats CSVs
+│   ├── Career_Stats_Defensive.csv
+│   ├── Career_Stats_Passing.csv
+│   ├── Career_Stats_Receiving.csv
+│   └── Career_Stats_Rushing.csv
+│   └── ML_HOF.csv           # cleaned and categorized hall of fame data
+│   └── ML_nonHOF.csv        # cleaned and categorized non hall of fame data
+├── data_extraction.py         # Cleans & normalizes data, saves to PostgreSQL
+├── main.py                    # Trains models, evaluates accuracy, supports user input
+├── requirements.txt
+├── README.md
+└── .gitignore
+````
+
+---
+
+## Data Pipeline
+
+### 1. Data Extraction & Cleaning (`data_extraction.py`)
+
+* Raw CSVs processed by position type: QB, WR, RB, DB, LB, DE, DT, TE
+* Grouped by player for career-level stats
+* Derived metrics created (e.g., Yards/Game, Completion %, TD%, etc.)
+* HOF player names are excluded from non-HOF group
+* Final datasets stored in **PostgreSQL** tables: `ml_hof_raw` and `ml_nonhof_raw`
+
+### 2. Model Training & Evaluation (`main.py`)
+
+* Loads HOF and non-HOF data from database or CSV fallback
+* Trains a separate model per position using only relevant features
+* Uses `SelectKBest` if few positive samples exist
+* Applies `SMOTE` to oversample rare HOF cases when needed
+* Performs 5-fold cross-validation (F1-score), then trains/test splits
+* Runs fresh data validation by randomly sampling new unseen rows
+* Offers live user predictions based on stat entry
+
+---
+
+## Sample Prediction
+
+```plaintext
+=== INTERACTIVE PLAYER EVALUATION ===
+Do you want to evaluate a player? (Y/N): Y
+
+Available Positions:
+1. QB
+2. WR
+3. TE
+4. RB
+5. LB
+6. DE
+7. DT
+8. DB
+9. SS
+10. FS
+
+Enter the number for the player's position: 1
 
 Enter the following stats for a QB:
 Passes Attempted: 10000
@@ -165,4 +109,57 @@ Ints: 150
 
 Predicted Probability of Hall of Fame: 87.00%
 ```
+
+---
+
+## Installation
+
+```bash
+git clone https://github.com/<your-username>/HOFforecast.git
+cd HOFforecast
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+Make sure you have PostgreSQL installed and running on your local machine (default port 5432 or 5431). You can change the DB connection string in `main.py` and `data_extraction.py`.
+
+---
+
+## Running the Project
+
+```bash
+# Step 1: Extract and store data into PostgreSQL
+python data_extraction.py
+
+# Step 2: Train models and enable user evaluation
+python main.py
+```
+
+---
+
+## Requirements
+
+All Python dependencies are in `requirements.txt`:
+
+```
+pandas
+numpy
+scikit-learn
+imblearn
+sqlalchemy
+psycopg2-binary
+```
+
+---
+
+## Author
+
+**Tanay Vysyaraju**
+Project: HOFforecast
+Domain: Sports Analytics, Machine Learning
 
